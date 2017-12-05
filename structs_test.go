@@ -1451,3 +1451,105 @@ func TestMap_InterfaceTypeWithMapValue(t *testing.T) {
 
 	_ = Map(a)
 }
+
+func TestMap_EncodeHook(t *testing.T) {
+	type A struct {
+		Hooked bool   `structs:"hooked"`
+		Name   string `structs:"name"`
+	}
+
+	f := func(k reflect.Kind, data interface{}) (interface{}, error) {
+		if k == reflect.Bool {
+			return true, nil
+		}
+		return data, nil
+	}
+
+	a := A{Hooked: false, Name: "test"}
+	s := New(&a)
+	s.EncodeHook = f
+
+	out := s.Map()
+
+	if !out["hooked"].(bool) {
+		t.Error("The encode hook should be called if declared in the Struct")
+	}
+}
+
+func TestMap_EncodeHook_ChangeType(t *testing.T) {
+	type A struct {
+		Hooked bool   `structs:"hooked"`
+		Name   string `structs:"name"`
+	}
+
+	f := func(k reflect.Kind, data interface{}) (interface{}, error) {
+		if k == reflect.Bool {
+			return "true", nil
+		}
+		return data, nil
+	}
+
+	a := A{Hooked: false, Name: "test"}
+	s := New(&a)
+	s.EncodeHook = f
+
+	out := s.Map()
+
+	got, ok := out["hooked"].(string)
+	if !ok {
+		t.Error("The encode hook should cast bool to string")
+	}
+
+	if got != "true" {
+		t.Error("The encode hook should replace bools with \"true\"")
+	}
+}
+
+func myRecursiveHook(k reflect.Kind, data interface{}) (interface{}, error) {
+	if k == reflect.Ptr {
+		v := reflect.Indirect(reflect.ValueOf(data))
+		s := New(v.Interface())
+		s.EncodeHook = myRecursiveHook
+		return map[string]interface{}{v.Type().Name(): s.Map()}, nil
+	}
+	if k == reflect.Bool {
+		return true, nil
+	}
+	return data, nil
+}
+
+func TestMap_EncodeHook_HandleStructPointer(t *testing.T) {
+	type A struct {
+		Hooked         bool
+		HookedOptional bool
+	}
+
+	type B struct {
+		Embedded         A
+		EmbeddedOptional *A
+	}
+
+	a := A{Hooked: false, HookedOptional: false}
+	b := B{Embedded: a, EmbeddedOptional: &a}
+
+	s := New(&b)
+	s.EncodeHook = myRecursiveHook
+
+	out := s.Map()
+
+	embeddedOptional, ok := out["EmbeddedOptional"].(map[string]interface{})
+	if !ok {
+		t.Error("The encode hook should cast pointed struct to map")
+	}
+	gotInterface, ok := embeddedOptional["A"]
+	if !ok {
+		t.Error("The encode hook should cast pointed struct to map containing struct name")
+	}
+	got, ok := gotInterface.(map[string]interface{})
+	if !ok {
+		t.Error("The encode hook should cast pointed struct to map")
+	}
+	if !got["Hooked"].(bool) {
+		t.Error("The encode hook should be called recursively")
+	}
+}
