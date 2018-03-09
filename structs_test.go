@@ -1553,3 +1553,106 @@ func TestMap_EncodeHook_HandleStructPointer(t *testing.T) {
 		t.Error("The encode hook should be called recursively")
 	}
 }
+
+func TestMap_EncodeHookFuncType_ChangeType(t *testing.T) {
+	type A struct {
+		Hooked bool   `structs:"hooked"`
+		Name   string `structs:"name"`
+	}
+
+	f := func(t reflect.Type, data interface{}) (interface{}, error) {
+		if t == reflect.TypeOf(data) {
+			return "true", nil
+		}
+		return data, nil
+	}
+
+	a := A{Hooked: false, Name: "test"}
+	s := New(&a)
+	s.EncodeHook = f
+
+	out := s.Map()
+
+	got, ok := out["hooked"].(string)
+	if !ok {
+		t.Error("The encode hook should cast bool to string")
+	}
+
+	if got != "true" {
+		t.Error("The encode hook should replace bools with \"true\"")
+	}
+}
+
+func TestMap_EncodeHook_invalid_decode_hook_signature(t *testing.T) {
+	type A struct {
+		Hooked bool   `structs:"hooked"`
+		Name   string `structs:"name"`
+	}
+
+	f := func() () {}
+
+	a := A{Hooked: false, Name: "test"}
+	s := New(&a)
+	s.EncodeHook = f
+
+	out := s.Map()
+
+	got, ok := out["hooked"].(bool)
+	if !ok {
+		t.Error("The encode hook should not cast bool to string due to an invalid hook")
+	}
+
+	if got != false {
+		t.Error("The encode hook should not replace bools with \"true\"")
+	}
+}
+
+
+func TestMap_EncodeHook_returning_nil(t *testing.T) {
+	type A struct {
+		Hooked bool   `structs:"hooked"`
+		Name   string `structs:"name"`
+	}
+
+	f := func(t reflect.Type, data interface{}) (interface{}, error) {
+		return nil, nil
+	}
+
+	a := A{Hooked: false, Name: "test"}
+	s := New(&a)
+	s.EncodeHook = f
+
+	out := s.Map()
+
+	got, ok := out["hooked"].(bool)
+	if !ok {
+		t.Error("The encode hook should not cast bool to string due to an invalid hook")
+	}
+
+	if got != false {
+		t.Error("The encode hook should not replace bools with \"true\"")
+	}
+}
+
+func TestMap_EncodeHook_invalid_value(t *testing.T) {
+	type B struct {
+		EmbeddedOptional interface{}
+	}
+
+	b := B{ EmbeddedOptional: nil}
+
+	s := New(&b)
+	s.EncodeHook = func(t reflect.Type, data interface{}) (interface{}, error)  {
+		return data, nil
+	}
+
+	out := s.Map()
+
+	data, ok := out["EmbeddedOptional"]
+	if !ok {
+		t.Errorf("The key EmbeddedOptional is not present in the serialized map %v", out)
+	}
+	if fmt.Sprintf("%v", data) != "<nil>" {
+		t.Errorf("The encode hook should return a nil pointer: %v", fmt.Sprintf("%v", data))
+	}
+}
