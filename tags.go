@@ -1,19 +1,16 @@
 package structs
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // tagOptions contains a slice of tag options
 type tagOptions []string
 
 // Has returns true if the given option is available in tagOptions
 func (t tagOptions) Has(opt string) bool {
-	for _, tagOpt := range t {
-		if tagOpt == opt {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(t, opt)
 }
 
 // parseTag splits a struct field's tag into its name and a list of options
